@@ -16,8 +16,10 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v4
 
-      - name: Create players folder
-        run: mkdir -p players
+      - name: Create players folders
+        run: |
+          mkdir -p players
+          mkdir -p player
 
       - name: Fetch Sleeper player index
         run: curl -L "https://api.sleeper.app/v1/players/nfl" -o players/nfl.json
@@ -25,15 +27,34 @@ jobs:
       - name: Validate JSON
         run: python -m json.tool players/nfl.json > /dev/null
 
+      - name: Split into per-player files
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          with open("players/nfl.json", "r") as f:
+              data = json.load(f)
+
+          os.makedirs("player", exist_ok=True)
+
+          for player_id, player_data in data.items():
+              out_path = os.path.join("player", f"{player_id}.json")
+              with open(out_path, "w") as out:
+                  json.dump(player_data, out, separators=(",", ":"))
+          PY
+
       - name: Save refresh metadata
         run: |
           python - <<'PY'
           import json
           from datetime import datetime, timezone
+
           meta = {
               "source": "https://api.sleeper.app/v1/players/nfl",
               "refreshed_at": datetime.now(timezone.utc).isoformat()
           }
+
           with open("players/meta.json", "w") as f:
               json.dump(meta, f, indent=2)
           PY
@@ -42,6 +63,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add players/nfl.json players/meta.json
+          git add players/nfl.json players/meta.json player
           git diff --cached --quiet || git commit -m "Refresh Sleeper player cache"
           git push
