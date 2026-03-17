@@ -1,0 +1,47 @@
+name: Refresh Sleeper NFL Players Cache
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 9 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Create players folder
+        run: mkdir -p players
+
+      - name: Fetch Sleeper player index
+        run: curl -L "https://api.sleeper.app/v1/players/nfl" -o players/nfl.json
+
+      - name: Validate JSON
+        run: python -m json.tool players/nfl.json > /dev/null
+
+      - name: Save refresh metadata
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import datetime, timezone
+          meta = {
+              "source": "https://api.sleeper.app/v1/players/nfl",
+              "refreshed_at": datetime.now(timezone.utc).isoformat()
+          }
+          with open("players/meta.json", "w") as f:
+              json.dump(meta, f, indent=2)
+          PY
+
+      - name: Commit updated cache
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add players/nfl.json players/meta.json
+          git diff --cached --quiet || git commit -m "Refresh Sleeper player cache"
+          git push
